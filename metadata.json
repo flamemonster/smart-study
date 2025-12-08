@@ -1,0 +1,5 @@
+{
+  "name": "Smart Study Notes",
+  "description": "A modern, AI-powered note-taking app with OCR and automated study aids using Gemini.",
+  "requestFramePermissions": []
+}

@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { AnalysisResponse, QuizItem, EvaluationResponse } from "../types";
+import { AnalysisResponse, QuizItem, EvaluationResponse, ChatMessage, ChatAttachment } from "../types";
 import { v4 as uuidv4 } from 'uuid';
 
 const apiKey = process.env.API_KEY || '';
@@ -43,20 +44,21 @@ export const analyzeNoteContent = async (noteContent: string): Promise<AnalysisR
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
       contents: `
-        You are a passionate, engaging, and highly effective teacher. Your goal is to help your student truly understand the material, not just memorize it.
-
+        You are "Alex", an elite study tutor who specializes in the Feynman Technique.
+        
         Input Text:
         "${noteContent}"
 
-        Your Instructions:
-
-        Task 1: The Lesson (Summary)
-        Write a summary of the input text. 
-        - **Tone**: Warm, conversational, and enthusiastic (like a human tutor speaking).
-        - **Structure**: Break it down into key concepts. 
-        - **Requirement**: For every key point you make, you MUST provide a concrete, real-world **example** or analogy to help explain it.
-        - **Format**: Return a list of strings, where each string is a complete thought/paragraph.
-
+        Task 1: The Summary (The "Explain Like I'm 5" version)
+        Break down the input text into a crystal-clear, engaging study guide.
+        
+        Rules for Summary:
+        1. **Simplify**: Use plain English. Avoid jargon unless you define it immediately.
+        2. **Analogies**: For every abstract concept, provide a concrete "Real World Analogy" (e.g., "Think of a cell membrane like a nightclub bouncer...").
+        3. **Keywords**: Wrap key terms in double asterisks like **this** to highlight them.
+        4. **Tone**: Enthusiastic, encouraging, and smart. Use an occasional emoji to keep it fresh.
+        5. **Structure**: Return a list of strings. Each string should focus on ONE main idea.
+        
         Task 2: The Quiz (Questions)
         Create a comprehensive set of study questions.
         - **Constraint**: These questions must be answerable **SOLELY** based on the "Lesson" (Summary) you just wrote in Task 1. Do NOT ask about details from the Input Text that you excluded from the Summary.
@@ -167,3 +169,84 @@ export const evaluateQuizAnswers = async (
     throw new Error("Failed to evaluate answers.");
   }
 };
+
+/**
+ * Chats with the note content.
+ */
+export const queryNote = async (
+  noteContent: string, 
+  history: ChatMessage[], 
+  newMessage: string
+): Promise<{ text: string, attachment?: ChatAttachment }> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: MODEL_NAME,
+      config: {
+        systemInstruction: `
+          You are "Alex", a super enthusiastic, empathetic, and friendly AI study buddy. 
+          
+          Your Personality:
+          - You speak naturally, like a supportive peer or a cool tutor, not a robot.
+          - You use emojis occasionally to keep things light (e.g., ✨, 🚀, 📚).
+          - You are encouraging. If the user is confused, you reassure them.
+          - You always base your answers on the provided notes first, but you can expand slightly to help understanding.
+
+          Separation of Concerns:
+          - If the user asks for a CODE EXAMPLE or a DIAGRAM (visual), do NOT put the code or SVG directly in your spoken text.
+          - Instead, use the 'attachment' field in the JSON response.
+          - For 'image' requests, generate a clean, valid SVG string in the attachment content.
+          - For 'code' requests, put the raw code in the attachment content.
+          - Your spoken 'text' should be a brief, friendly introduction to the attachment (e.g., "Here's a diagram that explains that process! 👇").
+          
+          CONTEXT (The User's Notes):
+          """${noteContent}"""
+        `,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            text: {
+              type: Type.STRING,
+              description: "The conversational response to the user."
+            },
+            attachment: {
+              type: Type.OBJECT,
+              properties: {
+                type: { type: Type.STRING, enum: ['code', 'image'] },
+                title: { type: Type.STRING },
+                content: { type: Type.STRING, description: "The raw code or SVG string." },
+                language: { type: Type.STRING, description: "Programming language for code, or 'svg' for images." }
+              },
+              nullable: true
+            }
+          },
+          required: ["text"]
+        }
+      },
+      contents: [
+        ...history.map(h => ({
+          role: h.role,
+          parts: [{ text: h.content }] // We only send the text history to keep context simple
+        })),
+        {
+          role: 'user',
+          parts: [{ text: newMessage }]
+        }
+      ]
+    });
+
+    const resultText = response.text;
+    if (!resultText) throw new Error("No response from AI");
+    
+    const parsed = JSON.parse(resultText);
+    return {
+      text: parsed.text,
+      attachment: parsed.attachment
+    };
+
+  } catch (error) {
+    console.error("Chat Error:", error);
+    // Fallback for error
+    return { text: "Oof! I tripped over a wire and couldn't process that. Mind asking again? 😅" };
+  }
+}

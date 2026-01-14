@@ -12,6 +12,21 @@ export interface AIAnalysis {
   questions: QuizItem[];
 }
 
+export interface ChatAttachment {
+  type: 'code' | 'image';
+  title: string;
+  content: string;
+  language?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'model';
+  content: string;
+  attachment?: ChatAttachment;
+  timestamp: number;
+}
+
 export interface Note {
   id: string;
   title: string;
@@ -19,6 +34,7 @@ export interface Note {
   createdAt: number;
   updatedAt: number;
   analysis?: AIAnalysis;
+  chatHistory?: ChatMessage[];
 }
 
 export interface User {
